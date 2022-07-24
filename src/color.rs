@@ -1,6 +1,11 @@
 use std::env;
+use term::terminfo::TermInfo;
+
+use crate::regent_color; 
 
 //base on preference
+
+
 pub enum TerminalColor {
     Colors256,
     Colors16,
@@ -25,15 +30,10 @@ pub enum Color {
     Reset,
 }
 
-/* call color base on the macro */
-macro_rules! regent_color {
-    (fg, $r:expr, $g: expr, $b: expr) => {
-        concat!("\x1b[38;2;", $r, ';', $g, ';', $b, "m")
-    };
-    (bg, $r:expr, $g: expr, $b: expr) => {
-        concat!("\x1b[48;2;", $r, ';', $g, ';', $b, "m")
-    }
-}
+
+
+
+
 
 impl Color {
     pub fn has_bg_color(self) -> bool {
@@ -65,6 +65,7 @@ fn sequence_for_color_16(color: Color, ) -> &'static [u8] {
 
 fn sequence_for_color_256(color: Color) -> &'static [u8] {
     use Color::*; 
+
     match color {
         Reset => b"\x1b[39;0m",
         Red => b"\x1b[91m",
@@ -140,7 +141,17 @@ impl TerminalColor {
                 if v == "truecolor" {
                     Some(TerminalColor::TrueColors)
                 } else {
-                    None
+                    TermInfo::from_env().ok().and_then(|x|{
+                        println!("what is this {:?}", x); 
+                        x.numbers.get("colors").map(|colors| {
+                            if *colors == 256 {
+                                TerminalColor::Colors256
+                            }else {
+                                TerminalColor::Colors16
+                            }
+                        })
+                    })
+                    //None
                 }
             })
             .or_else(|| None)
