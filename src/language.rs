@@ -1,8 +1,5 @@
 use std::{path::Path, ffi::OsStr};
 
-use crate::language;
-
-
 
 
 pub enum Indent {
@@ -10,6 +7,10 @@ pub enum Indent {
     Fixed(&'static str),
 }
 
+
+
+
+#[derive(Copy, Clone, PartialEq)]
 pub enum Language {
     Plain, 
     Rust, 
@@ -57,6 +58,7 @@ impl Language {
                 }
             }
         }
+
         Plain
     }
 
