@@ -1,7 +1,9 @@
-use std::path::PathBuf;
+
+
+use std::path::{PathBuf, Path};
 use crate::language::Language; 
 use crate::setter; 
-
+use crate::error::Result;
 
 
 pub struct Status {
@@ -16,13 +18,26 @@ pub struct Status {
 
 
 //creating a filepath for our editor to store files 
+
 pub struct FilePath {
     pub path: PathBuf, 
     pub display: String,
 }
 
+impl FilePath {
+    fn from<X: AsRef<Path>>(path: X) -> Self {
+        let path = path.as_ref(); 
+        
+        FilePath { 
+            path: PathBuf::from(path), 
+            display: path.to_string_lossy().to_string(),
+        }
+    }
+}
 
-struct TextBuffer {
+
+
+pub struct TextBuffer {
     cx: usize, 
     cy: usize, 
     undo_count: i32, 
@@ -38,8 +53,55 @@ impl TextBuffer {
     pub fn filename(&self) -> &str {
         self.file.as_ref().map(|x| x.display.as_str()).unwrap_or("[NO NAME FOR FILE]")
     }
+
+    pub fn empty() -> Self {
+        Self{
+            cx:0,
+            cy:0, 
+            file: None, 
+            undo_count: 0, 
+            modified: false, 
+            lang: Language::Plain, 
+            dirty_start:Some(0), 
+            inserted_undo: false,
+        }
+    }
+
+    pub fn open<X: AsRef<Path>>(path: X) -> Result<Self>{
+        let path = path.as_ref(); 
+        let file =  Some(FilePath::from(path)); 
+
+
+        if !path.exists() {
+            //when the file does not exist
+            let mut buf = Self::empty(); 
+        //    buf.file = file; 
+            buf.undo_count = 0; 
+            buf.modified = false; 
+            buf.lang = Language::detect(path); 
+        }
+
+
+
+        Ok(Self {
+            cx: 0, 
+            cy:0, 
+            file, 
+            undo_count: 0, 
+            modified: false,
+            lang: Language::detect(path), 
+            inserted_undo: false, 
+            dirty_start: Some(0)
+        })
+    }
     
+
+    
+
 }
+
+
+
 
 impl Status {
 
