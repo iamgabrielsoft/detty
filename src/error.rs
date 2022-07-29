@@ -6,7 +6,7 @@ use std::io;
 use std::time::SystemTimeError; 
 
 
-
+#[derive(Debug)]
 pub enum Error {
     IoError(io::Error), 
     SystemTimeError(SystemTimeError), 

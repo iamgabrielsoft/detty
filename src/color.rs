@@ -6,6 +6,7 @@ use crate::regent_color;
 //base on preference
 
 
+#[derive(Copy, Clone)]
 pub enum TerminalColor {
     Colors256,
     Colors16,

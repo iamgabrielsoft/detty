@@ -96,8 +96,30 @@ impl TextBuffer {
     }
     
 
+    //when starting the editor from strach
+    pub fn from_sctrach(&self) -> bool {
+       // self.file.is_none() && self.row.len() == 1 && self.row[0].len() == 0
+        self.file.is_none()
+    }
+
+    pub fn set_Lang(&mut self, lang: Language) {
+        self.lang = lang; //assign a lang -> self.lang
+    }
+
     
 
+
+    pub fn lang(&self) -> Language {
+        self.lang
+    }
+
+    pub fn cy(&self) -> usize {
+        self.cy
+    }
+
+    pub fn modified(&self) -> bool {
+        self.undo_count != 0  || self.modified
+    }
 }
 
 
@@ -113,6 +135,8 @@ impl Status {
 
 
     pub fn from_buffer(buf:&TextBuffer, buf_pos: (usize, usize)) -> Self {
+        
+        
         Self {
             modified: buf.modified, 
             filename: buf.filename().to_string(), //passing a string a string here
@@ -140,7 +164,7 @@ impl Status {
         format!("{} {}/{}", lang.name(), y, len)
     }
 
-    pub fn update_from_but(&mut self, buf:TextBuffer) {
+    pub fn update_from_but(&mut self, buf: &TextBuffer) {
         self.set_modified(buf.modified); 
         self.set_language(buf.lang); 
         self.set_filename(buf.filename()); 
