@@ -1,10 +1,7 @@
 
 
 use core::fmt;
-use std::fmt::write;
-use std::io::Read;
-use std::os::unix::prelude::AsRawFd;
-use std::path::Iter;
+use std::os::unix::io::AsRawFd;
 use std::process::exit;
 use std::env; 
 use std::io;
@@ -31,8 +28,10 @@ mod language;
 mod editor;
 mod status;
 mod macros;
-
-
+mod row; 
+mod edit_diff;
+mod prompt;
+mod message;
 
 fn print_help(program: &str, opts: Options) {
     let description = format!(
@@ -60,7 +59,7 @@ fn print_help(program: &str, opts: Options) {
 //deriving error from the debug trait 
 
 pub struct InputSequence {
-    stdin: io::Stdin
+    stdin: StdinMode
 }
 
 
@@ -68,7 +67,7 @@ pub struct InputSequence {
 pub struct StdinMode {
     visual: bool, 
     stdin: io::Stdin, 
-   // origin: termios::Termios,
+  // origin: termios::Termios
 }
 
 
@@ -82,7 +81,10 @@ impl StdinMode  {
         let stdin = io::stdin(); 
         let fd = stdin.as_raw_fd(); 
         let mut termios = Termios::from_fd(fd);
-        let origin  = termios;
+        //let origin  = termios?;
+
+
+
 
 
 
@@ -95,7 +97,7 @@ impl StdinMode  {
 
 
     pub fn input_keys(self) -> InputSequence {
-        InputSequence {  stdin: io::stdin() }
+        InputSequence {  stdin: self }
     }
 }
 
@@ -376,7 +378,7 @@ fn edit(files: Vec<String>) -> Result<()>{
 
    let input = StdinMode::new()?.input_keys();
    let output = io::stdout();  
-    Editor::open(input, output, None, &files); 
+    Editor::open(input, output, None, &files)?.edit(); 
 
    Ok(())
 }
