@@ -1,7 +1,7 @@
 use crate::row::{Row, self};
 
 
-
+#[derive(Copy, Clone)]
 pub enum UndoRedo {
     Undo, 
     Redo,
@@ -10,6 +10,7 @@ pub enum UndoRedo {
 
 
 //edit-diff
+#[derive(Debug)]
 pub enum  EditDiff {
     InsertChar(usize, usize, char), 
     DeleteChar(usize, usize, char),
@@ -54,7 +55,7 @@ impl EditDiff {
                 }
             },
 
-            EditDiff::Append(y, s, ) => match which {
+            EditDiff::Append(y, ref s, ) => match which {
                 Redo => {
                     let len = rows[y].len(); 
                     rows[y].append(s); 
@@ -69,7 +70,7 @@ impl EditDiff {
                 }
             },
 
-            EditDiff::Truncate(y, s) => match which {
+            EditDiff::Truncate(y, ref s) => match which {
                 Redo => {
                     let count = s.chars().count(); 
                     let len = rows[y].len(); 
@@ -83,7 +84,7 @@ impl EditDiff {
                 }
             },
 
-            EditDiff::Insert(x, y, c) => match which {
+            EditDiff::Insert(x, y, ref c) => match which {
                 Redo => {
                     rows[y].insert_str(x, c); 
                     (x + c.chars().count(), y)
@@ -95,7 +96,7 @@ impl EditDiff {
                 }
             },
 
-            EditDiff::Remove(x, y, c) => match which {
+            EditDiff::Remove(x, y, ref c) => match which {
                 Redo => {
                     let next_x = x - c.chars().count(); 
                     rows[y].remove(next_x, x); 
@@ -126,7 +127,7 @@ impl EditDiff {
             },
 
 
-            EditDiff::InsertLine(y, c) => match  which {
+            EditDiff::InsertLine(y, ref c) => match  which {
                 Redo => {
                     rows.insert(y, Row::new(c).unwrap()); 
                     (0, y)
