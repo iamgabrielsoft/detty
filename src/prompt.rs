@@ -1,16 +1,25 @@
 use std::io::Write; 
 
-use crate::InputSeq;
+
+
+use crate::input::{InputSeq, KeySeq};
 use crate::screen::Screen; 
 use crate::status::{TextBuffer, Status}; 
 use crate::error::Result;
-use crate::KeySeq;
 
 
 
 pub enum PromptResult {
     Canceled, 
     Input(String),
+}
+
+
+pub struct NoAction; 
+impl Action  for NoAction {
+    fn new<W:Write>(prompt: &mut Prompt<'_, W>) -> Self {
+        Self
+    }
 }
 
 
