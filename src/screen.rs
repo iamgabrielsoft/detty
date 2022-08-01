@@ -4,9 +4,12 @@ use std::cmp;
 use std::io::Write; 
 use std::time::SystemTime; 
 
+use unicode_width::UnicodeWidthChar;
+
 use crate::color::{Color, TerminalColor};
-use crate::status::Status;
-use crate::{InputSeq, KeySeq}; 
+use crate::row::Row;
+use crate::status::{Status, TextBuffer, self};
+use crate::input::{ KeySeq, InputSeq};
 use crate::error::{ Error, Result}; 
 use crate::message::DrawMessage;
 
@@ -127,54 +130,278 @@ impl <W: Write> Screen<W> {
 
 
     fn write_flush(&mut self, bytes: &[u8]) -> Result<()> {
-        self.output.write(bytes); 
-        self.output.flush(); 
+        self.output.write(bytes)?; 
+        self.output.flush()?; 
         Ok(())
     }
 
 
-    pub fn render_welcome(&mut self, status_bar: &Status) -> Result<()> {
-        
-        let mut buf = Vec::with_capacity(0); 
-        buf.write(self.terminal_color.sequence(Color::Reset)); 
+    fn draw_status_bar<B: Write>(&self, mut buf: B, status_bar: &Status) -> Result<()>{
+        write!(buf, "\x1b[{}H", self.rows() + 1)?;
+
+        buf.write(self.terminal_color.sequence(Color::Invert)); 
 
 
-        let msg_ = format!("Detty Editor --version {}", VERSION); 
-        let padding = (self.no_cols - 10) /2; 
+        let left = status_bar.left(); 
+        let left = &left[..cmp::min(left.len(), self.no_cols)];
+        //let hanle multi-byte chars
+        buf.write(left.as_bytes())?;
 
-        if padding > 0 {
-            buf.write(self.terminal_color.sequence(Color::NonText)); 
-            buf.write(b"~"); 
-            buf.write(self.terminal_color.sequence(Color::Reset));
 
-            for _ in 0..padding -1 {
-                buf.write(b" ");
+        let rest_len = self.no_cols - left.len(); 
+        if rest_len == 0 {
+            buf.write(self.terminal_color.sequence(Color::Reset))?; 
+            return Ok(()); 
+        }
+
+
+        let right = status_bar.right(); 
+        if right.len() > rest_len {
+            for _ in 0..rest_len {
+                buf.write(b" ")?;
             }
 
-            buf.write(msg_.as_bytes());
+            buf.write(self.terminal_color.sequence(Color::Reset)); 
+            return Ok(())
         }
+
+        
+        for _ in 0..rest_len - right.len() {
+            buf.write(b" ")?; 
+        }
+
+        buf.write(right.as_bytes())?;
+        buf.write(self.terminal_color.sequence(Color::Reset))?; 
+        Ok(())
+    }
+
+
+    fn draw_rows<B: Write>(
+        &self, 
+        mut buf: B,
+        dirty_start: usize, 
+        row: &[Row]
+    ) -> Result<()> {
+        let row_len = row.len(); 
+
+        buf.write(self.terminal_color.sequence(Color::Reset))?; 
+
+        for y in 0..self.rows() {
+            let file_row = y + self.row_off; 
+
+            if file_row < dirty_start {
+                continue;
+            }
+
+
+            write!(buf, "\x1b[{}H", y + 1)?;
+
+
+            if file_row >= row_len {
+                buf.write(self.terminal_color.sequence(Color::NonText))?;
+                buf.write(b"~")?;
+            
+            }else {
+                let row = &row[file_row]; 
+
+
+                let mut col = 0; 
+                let mut prev_color = Color::Reset; 
+
+                for c in row.render_text().chars(){
+                    col += c.width_cjk().unwrap_or(1); 
+                    if col <= self.col_off{
+                        continue;
+                    
+                    }else if col > self.no_cols + self.col_off {
+                        break;
+                    }
+
+
+                    // let color = hl.color();
+                    // if color != prev_color {
+                    //     if prev_color.has_bg_color() {
+                    //         buf.write(self.term_color.sequence(Color::Reset))?;
+                    //     }
+                    //     buf.write(self.term_color.sequence(color))?;
+                    //     prev_color = color;
+                    // }
+
+                    write!(buf, "{}", c)?;
+                }
+            }
+
+
+            //ensure to the reset color sequence
+            buf.write(self.terminal_color.sequence(Color::Reset))?; 
+
+
+            buf.write(b"\x1b[K")?;
+        }
+
+
+        Ok(())
+    }
+
+    fn update_message_bar(&mut self) -> Result<()>{
+        if let Some(m) = &self.message {
+            if SystemTime::now().duration_since(m.timestamp)?.as_secs() > 5 {
+                self.unset_message(); 
+            }
+        }
+
+
+        if self.draw_message == DrawMessage::Close {
+            self.set_dirty_start(self.no_rows); 
+        }
+
+        Ok(())
+    }
+
+    pub fn render(
+        &mut self,
+        buf: &TextBuffer, 
+        status_bar: &Status,
+    ) -> Result<()> {
+        self.do_scroll(buf.rows(), buf.cursor());
+        self.update_message_bar()?;
+        self.redraw(buf, status_bar)?; 
+        self.after_render(); 
+        Ok(())
+    }
+
+
+    pub fn redraw(
+        &mut self, 
+        text_buf: &TextBuffer,
+        status_bar: &Status
+    ) -> Result<()> {
+        let cursor_row = text_buf.cy() - self.row_off + 1; 
+        let cursor_col = self.rx - self.col_off + 1; 
+        let draw_message = self.draw_message; 
+
+        if self.dirty_start.is_none() 
+            && !status_bar.redraw && draw_message == DrawMessage::DoNothing {
+                if self.cursor_moved{
+                    write!(self.output, "\x1b[{};{}H", cursor_row, cursor_col)?;
+                    self.output.flush()?;
+                }
+        }
+
+
+        self.write_flush(b"\x1b[?25l")?;
+
+        let mut buf = Vec::with_capacity((self.rows() + 2) * self.no_cols); 
+        if let Some(s) = self.dirty_start {
+            self.draw_rows(&mut buf, s, text_buf.rows())?; 
+
+        }
+
+
+        //when the message bar opens/closes, position of status
+
+        if status_bar.redraw || draw_message == DrawMessage::Open || self.draw_message == DrawMessage::Close {
+            self.draw_status_bar(&mut buf, status_bar)?;
+        }
+
+
+        if draw_message == DrawMessage::Update || draw_message == DrawMessage::Open {
+            if let Some(message) = &self.message {
+                self.draw_message_bar(&mut buf, message)?;
+            }
+        }
+
+        //move cursor even if cursor_moved is false since
+        write!(buf, "\x1b[{};{}H", cursor_row, cursor_col)?;
+
+        
+        //remove the cursor -h
+        buf.write(b"\x1b[?25h")?;
+
+        self.write_flush(&buf)?;
+
+        Ok(())
+        
+    }
+
+    fn trim_line<S: AsRef<str>>(&self, line: &S) -> String {
+        let line = line.as_ref(); 
+        if line.len() <= self.col_off {
+            return "".to_string(); 
+        }
+
+        line.chars().skip(self.col_off).take(self.no_cols).collect()
+    }
+
+    pub fn render_welcome(&mut self, status_bar: &Status) -> Result<()> {
+        self.write_flush(b"\x1b[?25l")?; // Hide cursor
+
+
+
+        let mut buf = Vec::with_capacity(self.rows()); 
+        buf.write(self.terminal_color.sequence(Color::Reset))?;
+
+
+        for y in 0..self.rows() {
+            write!(buf, "\x1b[{}H", y + 1)?;
+
+
+
+
+                if y == self.rows() / 3 {
+                    let msg_buf = format!("Kiro editor -- version {}", VERSION);
+                    let welcome = self.trim_line(&msg_buf);
+                    let padding = (self.no_cols - welcome.len()) / 2;
+                    if padding > 0 {
+                        buf.write(self.terminal_color.sequence(Color::NonText))?;
+                        buf.write(b"~")?;
+                        buf.write(self.terminal_color.sequence(Color::Reset))?;
+                        for _ in 0..padding - 1 {
+                            buf.write(b" ")?;
+                        }
+                    }
+                    buf.write(welcome.as_bytes())?;
+                } else {
+                    buf.write(self.terminal_color.sequence(Color::NonText))?;
+                    buf.write(b"~")?;
+                } 
+        }
+
+        buf.write(self.terminal_color.sequence(Color::Reset))?; 
+        self.draw_status_bar(&mut buf, status_bar)?; 
+        
+        if let Some(message) = &self.message {
+            self.draw_message_bar(&mut buf, message)?; 
+        }
+
+        write!(buf, "\x1b[H")?; // Set cursor to left-top
+        buf.write(b"\x1b[?25h")?; // Show cursor
+        self.write_flush(&buf)?; 
+        
+
+        self.after_render();
         Ok(())
     }
 
     
-    fn draw_message_bar<B:Write>(&self, mut buf: B, message: MessageState) -> Result<()>{
+    fn draw_message_bar<B:Write>(&self, mut buf: B, message: &MessageState) -> Result<()>{
         let text = &message.text[..cmp::min(message.text.len(), self.no_cols)]; 
 
 
-        write!(buf, "\x1b[{}]H", self.no_rows + 2);
+        write!(buf, "\x1b[{}]H", self.no_rows + 2)?;
 
         if message.kind == StatusMessageKind::Error {
-            buf.write(self.terminal_color.sequence(Color::RedBg)); 
+            buf.write(self.terminal_color.sequence(Color::RedBg))?; 
         }
 
 
-        buf.write(text.as_bytes()); 
+        buf.write(text.as_bytes())?; 
 
         if message.kind != StatusMessageKind::Info {
-            buf.write(self.terminal_color.sequence(Color::Reset)); 
+            buf.write(self.terminal_color.sequence(Color::Reset))?; 
         }
 
-        buf.write(b"\x1b[K");
+        buf.write(b"\x1b[K")?;
         Ok(())
     }
 
@@ -208,6 +435,59 @@ impl <W: Write> Screen<W> {
         //self.draw
     }
 
+    fn do_scroll(&mut self, rows: &[Row], (cx, cy): (usize, usize)) {
+        let prev_rowoff = self.row_off; 
+        let prev_coloff = self.col_off; 
+
+        //calculate the x and y coordinate
+
+        if cy < rows.len() {
+            // self.rx = rows[cy].rx
+            self.rx = rows[cy].rx_from_cx(cx); 
+        
+        }else {
+            self.rx = 0; 
+        }
+
+        if cy < self.row_off {
+            //scroll up when cursor
+            self.row_off = cy; 
+        }
+
+        if cy >= self.row_off + self.rows() {
+            self.row_off = cy - self.rows() + 1;
+        }
+
+        if self.rx < self.col_off {
+            self.col_off = self.rx;
+        }
+
+
+        if self.rx >= self.col_off + self.no_rows {
+            self.col_off = self.next_coloff(self.rx - self.no_cols + 1, &rows[cy]); 
+        }
+
+
+        if prev_rowoff != self.row_off || prev_coloff != self.col_off {
+            self.set_dirty_start(self.row_off); 
+        }
+
+    }
+
+    fn next_coloff(&self, stop: usize, row: &Row) -> usize {
+        let mut col_off = 0; 
+
+        for x in row.render_text().chars() {
+            col_off += x.width_cjk().unwrap_or(1); 
+            if col_off >= stop {
+                //add next base on the previous screen_size
+                break; 
+            }
+        }
+
+        col_off
+    }
+
 
     pub fn rows(&self) -> usize {
         if self.message.is_some() {
@@ -217,6 +497,8 @@ impl <W: Write> Screen<W> {
             self.no_rows + 1
         }
     }
+
+
 
     pub fn cols(&self) -> usize {
         self.no_cols
@@ -239,15 +521,16 @@ impl <W: Write> Screen<W> {
     }
 
 
-    pub fn set_message(&mut self, m: Option<MessageState>){
+    fn set_message(&mut self, m: Option<MessageState>){
 
         let op = match (&self.message, &m) {
-            (None, None) => DrawMessage::DoNothing, 
-            (Some(_), None) => DrawMessage::Close, 
-            (None, Some(_)) => DrawMessage::Open, 
-            (Some(_), Some(_)) => DrawMessage::Update, 
-            (Some(x), Some(n)) if x.text == n.text => DrawMessage::DoNothing, 
+            (Some(p), Some(n)) if p.text == n.text => DrawMessage::DoNothing,
+            (Some(_), Some(_)) => DrawMessage::Update,
+            (None, Some(_)) => DrawMessage::Open,
+            (Some(_), None) => DrawMessage::Close,
+            (None, None) => DrawMessage::DoNothing,
         };
+
 
         //why fold here? to to receive the messages
         self.draw_message = self.draw_message.fold(op);
@@ -270,51 +553,80 @@ impl <W: Write> Screen<W> {
 
 
     pub fn force_set_cursor(&mut self, row: usize, col: usize) -> Result<()> {
-        write!(self.output, "\x1b[{};{}H", row, col); 
-        self.output.flush(); 
+        write!(self.output, "\x1b[{};{}H", row, col)?; 
+        self.output.flush()?; 
         Ok(())
     }
 
     pub fn render_help(&mut self) -> Result<()>{
-        let help:Vec<_> = HELP.split('\n')
-            .skip_while(|x| !x.contains(':'))
-            .map(str::trim_start)
-            .collect(); 
+        let help: Vec<_> = HELP
+        .split('\n')
+        .skip_while(|s| !s.contains(':'))
+        .map(str::trim_start)
+        .collect();
+    let rows = self.rows();
 
-        let rows = self.rows(); 
+    let vertical_margin = if help.len() < rows {
+        (rows - help.len()) / 2
+    } else {
+        0
+    };
+    let help_max_width = help.iter().map(|l| l.len()).max().unwrap();
+    let left_margin = if help_max_width < self.no_cols {
+        (self.no_cols - help_max_width) / 2
+    } else {
+        0
+    };
 
-        //let show where the user would see it on his screen
-        let vertical_margin = if help.len() < rows {
-            (rows - help.len()) /2
-        }else {
-            0
-        }; 
+    let mut buf = Vec::with_capacity(rows * self.no_cols);
 
+    for y in 0..vertical_margin {
+        write!(buf, "\x1b[{}H", y + 1)?;
+        buf.write(b"\x1b[K")?;
+    }
 
+    let left_pad = " ".repeat(left_margin);
+    let help_height = cmp::min(vertical_margin + help.len(), rows);
+    for y in vertical_margin..help_height {
+        let idx = y - vertical_margin;
+        write!(buf, "\x1b[{}H", y + 1)?;
+        buf.write(left_pad.as_bytes())?;
 
-       // let help_max_width = help.iter().map()
-        let max_width = help.iter().map(|x| x.len()).max().unwrap(); 
-        let left_margin = if max_width < self.no_cols {
-            (self.no_cols - max_width) /2 
-        }else {
-            0
-        };
-
-        let mut buf = Vec::with_capacity(self.rows() * self.no_cols); 
-
-        for y in 0..vertical_margin {
-            write!(buf, "\x1b[{}H", y + 1); 
-            buf.write(b"\x1b[K"); 
+        let help = &help[idx][..cmp::min(help[idx].len(), self.no_cols)];
+        buf.write(self.terminal_color.sequence(Color::Cyan))?;
+        let mut cols = help.split(':');
+        if let Some(col) = cols.next() {
+            buf.write(col.as_bytes())?;
+        }
+        buf.write(self.terminal_color.sequence(Color::Reset))?;
+        if let Some(col) = cols.next() {
+            write!(buf, ":{}", col)?;
         }
 
+        buf.write(b"\x1b[K")?;
+    }
 
-        let left_pad = " ".repeat(left_margin); 
+    for y in help_height..rows {
+        write!(buf, "\x1b[{}H", y + 1)?;
+        buf.write(b"\x1b[K")?;
+    }
 
-        
-        //self.write_flush(buf); 
-        self.write_flush(&buf)
+    self.write_flush(&buf)
         
     }
+
+  
+
+    // pub fn render(
+    //     &mut self, 
+    //     buf: &TextBuffer, 
+    //     status_bar: &Status
+    // ) -> Result<()> {
+        
+    //     self.do_scroll(buf.row, _)
+    //     // self.after_render(); 
+    //     // Ok(())
+    // }
 
 }
 
@@ -327,9 +639,13 @@ fn get_window_size<I, W>(input: I, mut output: W) -> Result<(usize, usize)>
         I: Iterator<Item = Result<InputSeq>>, 
         W:Write
 {
-    if let Some(x) =  term_size::dimensions() {
+    if let Some(x) =  term_size::dimensions_stdout() {
         return Ok(x); 
     }
+
+
+
+    
 
 
     for tita in input {
