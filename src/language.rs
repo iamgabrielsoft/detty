@@ -1,5 +1,5 @@
-use std::{path::Path, ffi::OsStr};
-
+use std::ffi::OsStr;
+use std::path::Path;
 
 
 pub enum Indent {
@@ -10,7 +10,7 @@ pub enum Indent {
 
 
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Language {
     Plain, 
     Rust, 
@@ -50,6 +50,8 @@ impl Language {
 
     pub fn detect<P: AsRef<Path>>(params: P) -> Language {
         use Language::*; 
+
+        
         let language  = vec![Rust, Plain]; 
         if let Some(extension) = params.as_ref().extension().and_then(OsStr::to_str) {
             for lang in language {
