@@ -6,7 +6,7 @@ use crate::regent_color;
 //base on preference
 
 
-#[derive(Copy, Clone)]
+#[derive(Clone, Copy)]
 pub enum TerminalColor {
     Colors256,
     Colors16,
@@ -142,26 +142,29 @@ impl TerminalColor {
                 if v == "truecolor" {
                     Some(TerminalColor::TrueColors)
                 } else {
-                    TermInfo::from_env().ok().and_then(|x|{
-                        println!("what is this {:?}", x); 
-                        x.numbers.get("colors").map(|colors| {
-                            if *colors == 256 {
-                                TerminalColor::Colors256
-                            }else {
-                                TerminalColor::Colors16
-                            }
-                        })
-                    })
+                    None
+
                     //None
                 }
             })
-            .or_else(|| None)
+            .or_else(|| {
+                TermInfo::from_env().ok().and_then(|x|{
+                //    println!("what is this {:?}", x); 
+                    x.numbers.get("colors").map(|colors| {
+                        if *colors == 256 {
+                            TerminalColor::Colors256
+                        }else {
+                            TerminalColor::Colors16
+                        }
+                    })
+                })
+            })
             .unwrap_or(TerminalColor::Colors16)
     }
 }
 
-pub trait ColorTrait {
-    fn feature() -> Color {
-        Color::Blue
-    }
-}
+// pub trait ColorTrait {
+//     fn feature() -> Color {
+//         Color::Blue
+//     }
+// }
