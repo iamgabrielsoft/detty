@@ -5,6 +5,7 @@ use std::process::exit;
 use std::env; 
 use std::io;
 
+use getopts::Options; 
 
 
 use crate::screen::{ HELP, VERSION}; 
@@ -17,8 +18,9 @@ use crate::input::StdinMode;
  * 
  */
 
+#[global_allocator]
+static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc; 
 
-use getopts::Options; 
 
 mod screen;
 mod color; 
@@ -64,10 +66,8 @@ fn edit(files: Vec<String>) -> Result<()>{
    // Editor::open(input, output, window_size, paths)
 
    let input = StdinMode::new()?.input_keys();
-   let output = io::stdout();  
-    Editor::open(input, output, None, &files)?.edit(); 
-
-   Ok(())
+   //let output = io::stdout();  
+   Editor::open(input, io::stdout(), None, &files)?.edit()
 }
 
 
