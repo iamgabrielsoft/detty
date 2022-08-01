@@ -27,13 +27,16 @@ impl fmt::Display for Error {
                 "Your Screen size width: {}x height: {}", width, height), 
             UnknownWindowSize => write!(f, "Wow! Unable to detect Terminal Window size"),
             NotUtf8iInput(utf) => {
-                write!(f, "Unable to handle non-UTF8 input"); 
+                write!(f, "Cannot handle non-UTF8 multi-byte input sequence: ")?;
+                
+                
                 for byte in utf.iter() {
                     write!(f, "\\x{:x}", byte)?;
                 }
 
                 Ok(())
             }, 
+            
             ControllCharInText(literal) => write!(f, "Invalid Character entered {:?}", literal)
 
         }
@@ -42,3 +45,19 @@ impl fmt::Display for Error {
 
 //returned result from type for the editor -> T can be anything
 pub type Result<T> = std::result::Result<T, Error>; 
+
+
+impl From<io::Error> for Error {
+    fn from(error: io::Error) -> Error{
+        Error::IoError(error)
+    }
+}
+
+
+
+//the systemerror handler 
+impl From<SystemTimeError> for Error {
+    fn from(error: SystemTimeError) -> Error {
+        Error::SystemTimeError(error)
+    }
+}
