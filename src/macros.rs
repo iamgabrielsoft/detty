@@ -27,10 +27,10 @@ macro_rules! setter {
 #[macro_export]
 /* call color base on the macro */
 macro_rules! regent_color {
-    (fg, $r:expr, $g: expr, $b: expr) => {
+    (fg, $r:expr, $g:expr, $b:expr) => {
         concat!("\x1b[38;2;", $r, ';', $g, ';', $b, "m")
     };
-    (bg, $r:expr, $g: expr, $b: expr) => {
+    (bg, $r:expr, $g:expr, $b:expr) => {
         concat!("\x1b[48;2;", $r, ';', $g, ';', $b, "m")
-    }
+    };
 }
