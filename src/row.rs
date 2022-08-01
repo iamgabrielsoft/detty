@@ -25,6 +25,7 @@ impl Row {
             indices: Vec::with_capacity(0), 
         }; 
 
+        row.update_render()?; 
 
         Ok(row)
     }
@@ -149,7 +150,7 @@ impl Row {
         for x in self.buf.chars() {
             if x == '\t' {
                 loop {
-                    self.render.chars();  
+                    self.render.push(' '); 
                     index += 1; 
                     if index % TAB_STOP == 0 {
                         break; 
@@ -225,59 +226,65 @@ impl Row {
         }
     }
 
+
+    pub fn rx_from_cx(&self, cx: usize) -> usize {
+        self[..cx].chars().fold(0, |rx, ch| {
+            if ch == '\t'  {
+                rx + TAB_STOP - (rx % TAB_STOP) //proceed TAB_STOP  substract 
+            
+            }else {
+                rx  + ch.width_cjk().unwrap()
+            }
+        })
+    }
+
 }
 
 
 
 impl ops::Index<ops::Range<usize>> for Row {
-    type Output = str; //out output is a string
+    type Output = str;
 
-    fn index(&self, index: ops::Range<usize>) -> &Self::Output {
-        //todo!()
-        let start = self.byte_idx_of(index.count()); 
-        &self.buf[start..]
+    fn index(&self, r: ops::Range<usize>) -> &Self::Output {
+        let start = self.byte_idx_of(r.start);
+        let end = self.byte_idx_of(r.end);
+        &self.buf[start..end]
     }
 }
-
 
 impl ops::Index<ops::RangeFrom<usize>> for Row {
     type Output = str;
 
-    fn index(&self, index: ops::RangeFrom<usize>) -> &Self::Output {
-        let start = self.byte_idx_of(index.start); 
+    fn index(&self, r: ops::RangeFrom<usize>) -> &Self::Output {
+        let start = self.byte_idx_of(r.start);
         &self.buf[start..]
     }
-} 
-
+}
 
 impl ops::Index<ops::RangeTo<usize>> for Row {
     type Output = str;
 
-    fn index(&self, index: ops::RangeTo<usize>) -> &Self::Output {
-        let end = self.byte_idx_of(index.end); 
+    fn index(&self, r: ops::RangeTo<usize>) -> &Self::Output {
+        let end = self.byte_idx_of(r.end);
         &self.buf[..end]
     }
 }
 
+impl ops::Index<ops::RangeInclusive<usize>> for Row {
+    type Output = str;
+
+    fn index(&self, r: ops::RangeInclusive<usize>) -> &Self::Output {
+        let start = self.byte_idx_of(*r.start());
+        let end = self.byte_idx_of(*r.end());
+        &self.buf[start..=end]
+    }
+}
 
 impl ops::Index<ops::RangeToInclusive<usize>> for Row {
     type Output = str;
 
-    fn index(&self, index: ops::RangeToInclusive<usize>) -> &Self::Output {
-        let end = self.byte_idx_of(index.end); 
+    fn index(&self, r: ops::RangeToInclusive<usize>) -> &Self::Output {
+        let end = self.byte_idx_of(r.end);
         &self.buf[..=end]
-    }
-}
-
-
-
-impl ops::Index<ops::RangeInclusive<usize>> for Row {
-    type Output = str;
-
-    fn index(&self, index: ops::RangeInclusive<usize>) -> &Self::Output {
-        let start = self.byte_idx_of(*index.start()); 
-
-        let end = self.byte_idx_of(*index.end()); 
-        &self.buf[start..=end]
     }
 }
