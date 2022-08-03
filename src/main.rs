@@ -34,7 +34,7 @@ mod edit_diff;
 mod prompt;
 mod message;
 mod input;
-
+mod buffer;
 
 
 fn print_help(program: &str, opts: Options) {
