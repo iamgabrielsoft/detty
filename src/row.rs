@@ -65,7 +65,7 @@ impl Row {
     }
 
 
-    pub fn char_index_of(&self, byte_idx: usize) -> usize {
+    pub fn char_idx_of(&self, byte_idx: usize) -> usize {
         if self.indices.is_empty() {
             return byte_idx; 
         }
@@ -139,7 +139,15 @@ impl Row {
     }
 
 
-    pub fn update_render(&mut self, ) -> Result<()>{
+    pub fn remove_char(&mut self, at: usize){
+        //remove the char 
+        self.buf.remove(self.byte_idx_of(at));
+        self.update_render().unwrap(); 
+    }
+
+    
+
+    pub fn update_render(&mut self) -> Result<()>{
         self.render.clear(); //clear the the state
         self.render.reserve(self.buf.len()); 
 
@@ -161,7 +169,7 @@ impl Row {
             }else if let Some(width) = x.width_cjk() {
                 index += width; 
                 //self.render.push(width); 
-                self.render.push(' '); 
+                self.render.push(x); 
             
             }else {
                 return Err(Error::ControllCharInText(x))
@@ -176,6 +184,7 @@ impl Row {
             self.indices = Vec::with_capacity(0); 
         
         }else {
+
             self.indices.clear(); 
             self.indices.reserve(num_chars); 
             
@@ -196,12 +205,6 @@ impl Row {
         }
     }
 
-
-    pub fn remove_char(&mut self, at: usize){
-        //remove the char 
-        self.buf.remove(self.byte_idx_of(at));
-        self.update_render().unwrap(); 
-    }
 
 
     //append text to other text on the same row 
@@ -252,6 +255,8 @@ impl ops::Index<ops::Range<usize>> for Row {
     }
 }
 
+
+
 impl ops::Index<ops::RangeFrom<usize>> for Row {
     type Output = str;
 
@@ -260,6 +265,8 @@ impl ops::Index<ops::RangeFrom<usize>> for Row {
         &self.buf[start..]
     }
 }
+
+
 
 impl ops::Index<ops::RangeTo<usize>> for Row {
     type Output = str;
@@ -270,6 +277,8 @@ impl ops::Index<ops::RangeTo<usize>> for Row {
     }
 }
 
+
+
 impl ops::Index<ops::RangeInclusive<usize>> for Row {
     type Output = str;
 
@@ -279,6 +288,8 @@ impl ops::Index<ops::RangeInclusive<usize>> for Row {
         &self.buf[start..=end]
     }
 }
+
+
 
 impl ops::Index<ops::RangeToInclusive<usize>> for Row {
     type Output = str;

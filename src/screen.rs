@@ -8,10 +8,13 @@ use unicode_width::UnicodeWidthChar;
 
 use crate::color::{Color, TerminalColor};
 use crate::row::Row;
-use crate::status::{Status, TextBuffer, self};
+use crate::status::Status;
+use crate::buffer::TextBuffer;
 use crate::input::{ KeySeq, InputSeq};
 use crate::error::{ Error, Result}; 
 use crate::message::DrawMessage;
+
+
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION"); 
 pub const HELP: &str = "\
@@ -110,7 +113,7 @@ impl <W: Write> Screen<W> {
             return Err(Error::TooSmallWindow(width, height));
         }
 
-        output.write(b"\x1b[?1049h");
+        output.write(b"\x1b[?1049h")?;
 
         Ok(Self {
             output, 
@@ -642,10 +645,6 @@ fn get_window_size<I, W>(input: I, mut output: W) -> Result<(usize, usize)>
     if let Some(x) =  term_size::dimensions_stdout() {
         return Ok(x); 
     }
-
-
-
-    
 
 
     for tita in input {
